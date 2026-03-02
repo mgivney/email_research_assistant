@@ -99,15 +99,6 @@ def search_serper(search_query: str) -> List[Dict[str, Any]]:
     Returns:
         List of search results with title, link, snippet, etc.
     """
-    """
-curl --get https://serpapi.com/search \
- -d engine="google" \
- -d q="Agentic+AI+healthcare+revenue+cycle" \
- -d google_domain="google.com" \
- -d hl="en" \
- -d gl="us" \
- -d api_key="4a1706e9ad2e896b124b65f03231db5a9e4e71bc55ef2e9f54f4416a6e5a8340"    
-    """
 
     params = {
         "engine": "google",
@@ -115,7 +106,7 @@ curl --get https://serpapi.com/search \
         "google_domain": "google.com",
         "hl": "en",
         "gl": "us",
-        "api_key": "4a1706e9ad2e896b124b65f03231db5a9e4e71bc55ef2e9f54f4416a6e5a8340"
+        "api_key": os.getenv('SERPER_API_KEY') #"4a1706e9ad2e896b124b65f03231db5a9e4e71bc55ef2e9f54f4416a6e5a8340"
     }
 
     response = requests.get("https://serpapi.com/search", params=params)
@@ -430,17 +421,6 @@ def scrub_html_for_json(html: str) -> str:
 def send_email(email_content: str):
     """
         Uses ReSend API to send an email.
-    """
-    """
-    curl -X POST 'https://api.resend.com/emails' \
-        -H 'Authorization: Bearer re_95CFsXZt_L9ymr9Tpj7ia6fSVvFvDDLAQ' \
-        -H 'Content-Type: application/json' \
-        -d $'{
-            "from": "onboarding@resend.dev",
-            "to": "mgivney@gmail.com",
-            "subject": "Hello World",
-            "html": "<p>Congrats on sending your <strong>first email</strong>!</p>"
-            }'
     """
     response = requests.post(
         "https://api.resend.com/emails",
