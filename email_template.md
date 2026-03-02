@@ -1,6 +1,6 @@
-# Big Company Updates
+# RCM Tech Insights
 
-## Key Highlights
+## Key Highlights From This Week
 
 - Highlight 1:
 Short description

@@ -124,7 +124,7 @@ def search_serper(search_query: str) -> List[Dict[str, Any]]:
             'search_term': search_query,
             'id': idx
         }
-        for idx, result in enumerate(results_list[:10], 1)
+        for idx, result in enumerate(results_list[:20], 1)
     ]
 
 
