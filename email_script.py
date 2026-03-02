@@ -14,7 +14,7 @@ from typing import List, Dict, Any, Literal, Annotated
 
 import requests
 from bs4 import BeautifulSoup
-from langchain.schema import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
