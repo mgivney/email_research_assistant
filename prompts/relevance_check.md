@@ -19,13 +19,10 @@ You will be given a list of search results, and you will need to determine which
 
 - Agentic AI updates from the large AI players:
 -- OpenAI
--- Meta
--- Perplexity
+-- Anthropic
 -- Gemini
--- Mistral
--- Cursor
-- How people are using agents in industry, from LinkedIn, Twitter, etc.
-- News articles about AI agents.
+- How people are using agents in the health care industry, from LinkedIn, Twitter, etc.
+- News articles about AI agents being used to solve a healthcare problem. 
 
 # Example of what is not relevant 
 

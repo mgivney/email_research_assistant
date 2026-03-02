@@ -14,6 +14,7 @@ from typing import List, Dict, Any, Literal, Annotated
 
 import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
@@ -21,8 +22,8 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
-import sib_api_v3_sdk
-from sib_api_v3_sdk.rest import ApiException
+import re
+import unicodedata
 
 
 # Configuration
@@ -37,12 +38,21 @@ SEARCH_TERMS = [
 required_environment_variables = [
     "SERPER_API_KEY",
     "SCRAPING_API_KEY",
-    "SENDINGBLUE_API_KEY",
+    "RESEND_API_KEY",
     "OPENAI_API_KEY"
 ]
 
 def validate_environment_variables():
-    """Validate environment variables."""
+    """
+    Validate that all required environment variables are set.
+
+    Checks each variable in the required_environment_variables list and raises
+    a ValueError if any are missing. This ensures the script has access to all
+    necessary API keys before attempting to run.
+
+    Raises:
+        ValueError: If any required environment variable is not set.
+    """
     for var in required_environment_variables:
         if os.getenv(var) is None:
             raise ValueError(f"Environment variable {var} is not set")
@@ -89,25 +99,31 @@ def search_serper(search_query: str) -> List[Dict[str, Any]]:
     Returns:
         List of search results with title, link, snippet, etc.
     """
-    url = "https://google.serper.dev/search"
-    
-    payload = json.dumps({
-        "q": search_query,
-        "gl": "gb",
-        "num": 20,
-        "tbs": "qdr:d"
-    })
+    """
+curl --get https://serpapi.com/search \
+ -d engine="google" \
+ -d q="Agentic+AI+healthcare+revenue+cycle" \
+ -d google_domain="google.com" \
+ -d hl="en" \
+ -d gl="us" \
+ -d api_key="4a1706e9ad2e896b124b65f03231db5a9e4e71bc55ef2e9f54f4416a6e5a8340"    
+    """
 
-    headers = {
-        'X-API-KEY': os.getenv("SERPER_API_KEY"),
-        'Content-Type': 'application/json'
+    params = {
+        "engine": "google",
+        "q": "Agentic+AI+healthcare+revenue+cycle",
+        "google_domain": "google.com",
+        "hl": "en",
+        "gl": "us",
+        "api_key": "4a1706e9ad2e896b124b65f03231db5a9e4e71bc55ef2e9f54f4416a6e5a8340"
     }
 
-    response = requests.post(url, headers=headers, data=payload)
+    response = requests.get("https://serpapi.com/search", params=params)
     results = response.json()
-    if 'organic' not in results:
+    if 'organic_results' not in results:
         raise ValueError(f"No organic results found in results {results} for search query {search_query}")
-    results_list = results['organic']
+
+    results_list = results['organic_results']
 
     return [
         {
@@ -117,13 +133,27 @@ def search_serper(search_query: str) -> List[Dict[str, Any]]:
             'search_term': search_query,
             'id': idx
         }
-        for idx, result in enumerate(results_list, 1)
+        for idx, result in enumerate(results_list[:10], 1)
     ]
 
 
 
 def load_prompt(prompt_name: str) -> str:
-    """Load a prompt template from file."""
+    """
+    Load a prompt template from the prompts directory.
+
+    Reads a markdown file containing a prompt template used for LLM interactions.
+    Prompts are stored in the 'prompts/' directory with .md extension.
+
+    Args:
+        prompt_name: The name of the prompt file (without .md extension).
+
+    Returns:
+        The contents of the prompt file as a string.
+
+    Raises:
+        FileNotFoundError: If the prompt file does not exist.
+    """
     with open(f"prompts/{prompt_name}.md", "r") as file:
         return file.read()
 
@@ -146,7 +176,23 @@ def check_search_relevance(search_results: Dict[str, Any]) -> RelevanceCheckOutp
 
 
 def convert_html_to_markdown(html_content: str) -> str:
-    """Convert HTML content to markdown format."""
+    """
+    Convert HTML content to markdown format.
+
+    Parses HTML and converts common elements to their markdown equivalents:
+    - Headers (h1-h6) to # syntax
+    - Links to [text](url) format
+    - Bold/strong to **text**
+    - Italic/em to *text*
+    - Unordered lists to - items
+    - Ordered lists to numbered items
+
+    Args:
+        html_content: Raw HTML string to convert.
+
+    Returns:
+        Cleaned markdown string with normalized whitespace.
+    """
     soup = BeautifulSoup(html_content, 'html.parser')
     
     # Convert headers
@@ -273,7 +319,23 @@ def generate_summaries(markdown_contents: List[Dict[str, Any]]) -> List[Dict[str
 
 
 def summariser(state: State) -> Dict:
-    """Generate email summary from the state."""
+    """
+    Generate an email summary from the current workflow state.
+
+    This is a LangGraph node function that takes the accumulated summaries
+    and generates a formatted email digest using the configured LLM. It
+    combines individual article summaries into a cohesive email following
+    the provided template.
+
+    Args:
+        state: The current LangGraph state containing messages, summaries,
+            and the email template.
+
+    Returns:
+        Dict containing:
+            - messages: List of AIMessages with the email summary and feedback request
+            - created_summaries: List containing the generated email summary
+    """
     summariser_output = llm_summariser.invoke({
         "messages": state["messages"],
         "list_of_summaries": state["summaries"],
@@ -290,7 +352,23 @@ def summariser(state: State) -> Dict:
 
 
 def reviewer(state: State) -> Dict:
-    """Review the generated summary."""
+    """
+    Review the generated email summary and provide feedback.
+
+    This is a LangGraph node function that evaluates the summariser's output.
+    It swaps message roles (AI <-> Human) to simulate a conversation where
+    the reviewer critiques the summariser's work. The reviewer can either
+    approve the summary or request revisions.
+
+    Args:
+        state: The current LangGraph state containing the conversation history
+            and generated summaries.
+
+    Returns:
+        Dict containing:
+            - messages: List with HumanMessage containing reviewer feedback
+            - approved: Boolean indicating if the summary meets quality standards
+    """
     converted_messages = [
         HumanMessage(content=msg.content) if isinstance(msg, AIMessage)
         else AIMessage(content=msg.content) if isinstance(msg, HumanMessage)
@@ -308,56 +386,109 @@ def reviewer(state: State) -> Dict:
 
 
 def conditional_edge(state: State) -> Literal["summariser", END]:
-    """Determine next step based on approval status."""
+    """
+    Determine the next workflow step based on reviewer approval.
+
+    This is a LangGraph conditional edge function that routes the workflow
+    based on whether the reviewer approved the summary. If approved, the
+    workflow ends. If not approved, it loops back to the summariser for
+    revision.
+
+    Args:
+        state: The current LangGraph state containing the approval status.
+
+    Returns:
+        END if the summary is approved, "summariser" if revisions are needed.
+    """
     return END if state["approved"] else "summariser"
 
 
+def scrub_html_for_json(html: str) -> str:
+    """
+    Scrubs HTML content to be safe for JSON serialization.
+    """
+    # Decode bytes if necessary
+    if isinstance(html, bytes):
+        html = html.decode("utf-8", errors="replace")
+
+    # Normalize unicode (NFC handles combining characters, etc.)
+    html = unicodedata.normalize("NFC", html)
+
+    # Remove null bytes
+    html = html.replace("\x00", "")
+
+    # Remove non-printable control characters EXCEPT safe whitespace
+    # Keeps: \t (tab), \n (newline), \r (carriage return)
+    html = re.sub(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]", "", html)
+
+    # Replace invalid unicode surrogate characters
+    html = html.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+
+    return html
+
+
 def send_email(email_content: str):
-    """Send email using Sendinblue API."""
-    configuration = sib_api_v3_sdk.Configuration()
-    configuration.api_key['api-key'] = os.getenv("SENDINGBLUE_API_KEY")
-    
-    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
-    
-    email_params = {
-        "subject": "Daily AI Research Summary",
-        "sender": {"name": "Will White", "email": os.getenv("DESTINATION_EMAIL")},
-        "html_content": email_content,
-        "to": [{"email": os.getenv("DESTINATION_EMAIL"), "name": "Will White"}],
-        "params": {"subject": "Daily AI Research Summary"}
-    }
-    
-    try:
-        api_response = api_instance.send_transac_email(
-            sib_api_v3_sdk.SendSmtpEmail(**email_params)
-        )
-        print(api_response)
-    except ApiException as e:
-        print(f"Failed to send email: {e}")
+    """
+        Uses ReSend API to send an email.
+    """
+    """
+    curl -X POST 'https://api.resend.com/emails' \
+        -H 'Authorization: Bearer re_95CFsXZt_L9ymr9Tpj7ia6fSVvFvDDLAQ' \
+        -H 'Content-Type: application/json' \
+        -d $'{
+            "from": "onboarding@resend.dev",
+            "to": "mgivney@gmail.com",
+            "subject": "Hello World",
+            "html": "<p>Congrats on sending your <strong>first email</strong>!</p>"
+            }'
+    """
+    response = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {os.getenv('RESEND_API_KEY')}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": "RCM AI Bot<onboarding@resend.dev>",
+            "to": 'mgivney@gmail.com',
+            "subject": "RCM AI Bot: Your Agent",
+            "html": scrub_html_for_json(email_content)
+        },
+    )
+    if not response.ok:
+        print(f"Resend error: {response.status_code} - {response.text}")
+    response.raise_for_status()
+    return response.json()
 
 
 def main():
-    """Main execution flow."""
-    try:
-        validate_environment_variables()
-    except ValueError as e:
-        with open(".env", "w") as f:
-            # Load environment variables from .env file
-            for line in f:
-                if '=' in line:
-                    key, value = line.strip().split('=', 1)
-                    os.environ[key] = value
-        print("Loaded environment variables from .env file")
-    
+    """
+    Main execution flow for the email research assistant.
+
+    Orchestrates the complete pipeline:
+    1. Loads environment variables from .env and validates them
+    2. Searches for AI-related content using configured search terms
+    3. Filters results for relevance using LLM analysis
+    4. Scrapes relevant pages and converts to markdown
+    5. Generates individual summaries for each article
+    6. Runs a LangGraph workflow with summariser/reviewer agents
+       to produce a polished email digest
+    7. Sends the final approved email via Sendinblue
+
+    The workflow uses a feedback loop where the reviewer can request
+    revisions from the summariser until the email meets quality standards.
+    """
+    load_dotenv()
+    validate_environment_variables()
     # Search and filter results
     relevant_results = []
-    for search_term in SEARCH_TERMS:
-        results = search_serper(search_term)
-        filtered_results = check_search_relevance(results)
-        relevant_ids = [r.id for r in filtered_results.relevant_results]
-        filtered_results = [r for r in results if str(r['id']) in relevant_ids]
-        relevant_results.extend(filtered_results)
-    
+
+    results = search_serper('Agentic+AI+healthcare+revenue+cycle')
+    filtered_results = check_search_relevance(results)
+    relevant_ids = [r.id for r in filtered_results.relevant_results]
+    filtered_results = [r for r in results if str(r['id']) in relevant_ids]
+    relevant_results.extend(filtered_results)
+
     # Process content
     markdown_contents = scrape_and_save_markdown(relevant_results)
     summaries = generate_summaries(markdown_contents)

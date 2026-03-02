@@ -1,6 +1,8 @@
 .conda/
-*.md
 *.json
 .venv/
 .idea/
 .env
+markdown_summaries/
+scraped_markdown/
+.claude/
