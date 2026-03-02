@@ -27,11 +27,11 @@ from sib_api_v3_sdk.rest import ApiException
 
 # Configuration
 SEARCH_TERMS = [
-    "Agentic AI",
-    "OpenAI LinkedIn",
-    "Perplexity LinkedIn",
-    "Meta AI LinkedIn",
-    "Anthropic LinkedIn"
+    "Agentic AI healthcare revenue cycle",
+    "Autonomous healthcare Revenue Cycle",
+    "Anthropic healthcare life-science",
+    "Anthropic LinkedIn",
+    "Anthropic healthcare LinkedIn"
 ]
 
 required_environment_variables = [
