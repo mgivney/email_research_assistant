@@ -453,7 +453,7 @@ def main():
     5. Generates individual summaries for each article
     6. Runs a LangGraph workflow with summariser/reviewer agents
        to produce a polished email digest
-    7. Sends the final approved email via Sendinblue
+    7. Sends the final approved email via Resend
 
     The workflow uses a feedback loop where the reviewer can request
     revisions from the summariser until the email meets quality standards.
